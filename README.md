@@ -1,5 +1,7 @@
 # json-typestack
 
+**[Open the live page](https://jesserweigel.github.io/json-typestack/)**
+
 Paste several JSON samples of the same shape. Get a TypeScript interface, a Zod schema, a
 JSON Schema, a Postgres `CREATE TABLE`, and example fixtures, with optionality inferred
 from which fields are missing across the samples.
@@ -487,3 +489,5 @@ scripts/hygiene.py         secrets, home paths, NUL bytes, file sizes
 ## License
 
 MIT
+
+Part of [722 things to build](https://github.com/JesseRWeigel/722-things-to-build).
