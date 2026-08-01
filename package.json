@@ -1,0 +1,21 @@
+{
+  "name": "json-typestack",
+  "version": "0.1.0",
+  "description": "Paste JSON samples, get TypeScript, Zod, JSON Schema, Postgres DDL and fixtures that all agree",
+  "type": "module",
+  "bin": { "json-typestack": "bin/json-typestack.js" },
+  "exports": "./src/index.js",
+  "scripts": {
+    "test": "node --test test/",
+    "build:docs": "node scripts/build-docs.mjs",
+    "verify": "bash scripts/verify.sh"
+  },
+  "engines": { "node": ">=20.11" },
+  "license": "MIT",
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "ajv": "^8.20.0",
+    "typescript": "^7.0.2",
+    "zod": "^4.4.3"
+  }
+}
