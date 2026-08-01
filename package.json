@@ -6,7 +6,7 @@
   "bin": { "json-typestack": "bin/json-typestack.js" },
   "exports": "./src/index.js",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "build:docs": "node scripts/build-docs.mjs",
     "verify": "bash scripts/verify.sh"
   },

@@ -129,9 +129,12 @@ export function jtsEmitPostgres(rootTs, names, opts = {}) {
     const comments = [];
     if (renamed) comments.push(`from JSON key ${JSON.stringify(f.key)}: ${reason}`);
     if (note) comments.push(note);
-    if (optional && nullable) comments.push('optional AND nullable in the source samples');
+    // When null was the ONLY thing observed, the note above already says so; repeating
+    // "and it was null sometimes" adds nothing.
+    const onlyNull = jtsMembers(f.type).length === 0;
+    if (optional && nullable && !onlyNull) comments.push('optional AND nullable in the source samples');
     else if (optional) comments.push('optional: absent from at least one sample');
-    else if (nullable) comments.push('always present, but null in at least one sample');
+    else if (nullable && !onlyNull) comments.push('always present, but null in at least one sample');
     body.push(
       `  ${jtsQuotePgIdent(column)} ${type}${notNull}${comments.length ? `, -- ${comments.join('; ')}` : ','}`
     );
