@@ -227,3 +227,75 @@ export const SCENARIOS = [
     ],
   },
 ];
+
+// Two keys that differ only past byte 63. Both the column names AND the constraint names
+// truncate to the same identifier, and Postgres rejects the whole CREATE TABLE with
+// "already exists". pglite running this DDL is what caught it.
+const LONG_A = 'k'.repeat(70) + 'A';
+const LONG_B = 'k'.repeat(70) + 'B';
+
+SCENARIOS.push({
+  id: 'longkeys',
+  typeName: 'Long',
+  note: 'keys past the 63-byte Postgres identifier limit, plus the empty-string key',
+  samples: [
+    { [LONG_A]: { x: 1 }, [LONG_B]: 'b', '': 1, ok: true },
+    { [LONG_A]: { x: 2 }, [LONG_B]: 'c', '': 2, ok: false },
+  ],
+  wrong: [
+    {
+      label: 'a truncated-name column is missing its value',
+      value: { [LONG_B]: 'b', '': 1, ok: true },
+      expect: { zod: 'reject', ajv: 'reject', pg: 'reject', ts: 'reject' },
+    },
+    {
+      label: 'the empty-string key is missing',
+      value: { [LONG_A]: { x: 1 }, [LONG_B]: 'b', ok: true },
+      expect: { zod: 'reject', ajv: 'accept', pg: 'reject', ts: 'reject' },
+      why: 'the ajv limitation pinned in test/ajv_limits.test.js',
+    },
+    {
+      label: 'a truncated-name column holds an array where an object was inferred',
+      value: { [LONG_A]: [], [LONG_B]: 'b', '': 1, ok: true },
+      expect: { zod: 'reject', ajv: 'reject', pg: 'reject', ts: 'reject' },
+    },
+  ],
+});
+
+// Keys carrying control characters. A raw newline inside a quoted Postgres identifier is
+// legal but splits the DDL across lines, and a raw newline inside a SQL literal splits the
+// load statement, so both go through an escaping path. pglite executing this is the check.
+const NL_KEY = 'a' + '\n' + 'b';
+const TAB_KEY = 'tab' + '\t' + 'here';
+const BS_KEY = 'back' + '\\' + 'slash';
+
+SCENARIOS.push({
+  id: 'ctrlkeys',
+  typeName: 'Ctrl',
+  note: 'keys with newline, tab, apostrophe and backslash in them',
+  samples: [
+    { [NL_KEY]: 1, [TAB_KEY]: 'x', "q'uote": true, [BS_KEY]: 1, ok: 'a' },
+    { [NL_KEY]: 2, [TAB_KEY]: 'y', "q'uote": false, [BS_KEY]: 2, ok: 'b' },
+  ],
+  wrong: [
+    {
+      label: 'the newline-keyed field is missing',
+      value: { [TAB_KEY]: 'x', "q'uote": true, [BS_KEY]: 1, ok: 'a' },
+      expect: { zod: 'reject', ajv: 'reject', pg: 'reject', ts: 'reject' },
+    },
+    {
+      label: 'the apostrophe-keyed field holds a string instead of a boolean',
+      value: { [NL_KEY]: 1, [TAB_KEY]: 'x', "q'uote": 'nope', [BS_KEY]: 1, ok: 'a' },
+      expect: { zod: 'reject', ajv: 'reject', pg: 'reject', ts: 'reject' },
+      why:
+        "Postgres boolean input accepts 'yes', 't', '1' and friends, which is why the " +
+        "awkward scenario pins one of those as accepted, but 'nope' is not one of them",
+    },
+    {
+      label: 'the tab-keyed field holds a number where a string was inferred',
+      value: { [NL_KEY]: 1, [TAB_KEY]: 7, "q'uote": true, [BS_KEY]: 1, ok: 'a' },
+      expect: { zod: 'reject', ajv: 'reject', pg: 'accept', ts: 'reject' },
+      why: 'a text column accepts any scalar in its textual form',
+    },
+  ],
+});

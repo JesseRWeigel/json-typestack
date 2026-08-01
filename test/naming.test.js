@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { jtsGenerate } from '../src/index.js';
-import { jtsPgColumnNames, jtsPgTableName, jtsRootTypeName, jtsJsKey } from '../src/naming.js';
+import { jtsPgColumnNames, jtsPgTableName, jtsRootTypeName, jtsJsKey, jtsPgFitIdentifiers } from '../src/naming.js';
 
 const AWKWARD = [
   { '2fa': true, 'my-field': 'x', class: 1, '': 'empty', 'ok_key': 1, 'SELECT': 'v', 'a b': 1, 'a"b': 1 },
@@ -125,4 +125,60 @@ test('the generated TypeScript and Zod contain no unquoted illegal identifier', 
       );
     }
   }
+});
+
+test('constraint names are de-duplicated after truncation, or Postgres rejects the table', () => {
+  // Two keys differing only past byte 63 truncate to the same column name AND the same
+  // constraint name. Postgres refuses the whole CREATE TABLE with "already exists".
+  const a = `${'k'.repeat(70)}A`;
+  const b = `${'k'.repeat(70)}B`;
+  const g = jtsGenerate([{ [a]: { x: 1 }, [b]: { y: 1 } }], { name: 'T' });
+  const names = [...g.sql.matchAll(/^ {2}CONSTRAINT "((?:[^"]|"")*)"/gm)].map((m) => m[1]);
+  assert.equal(names.length, 2);
+  assert.equal(new Set(names).size, 2, `duplicate constraint names: ${names.join(', ')}`);
+  for (const n of names) {
+    assert.ok(Buffer.byteLength(n, 'utf8') <= 63, `constraint name is ${Buffer.byteLength(n, 'utf8')} bytes`);
+  }
+});
+
+test('jtsPgFitIdentifiers is byte-aware and de-duplicates', () => {
+  const fitted = jtsPgFitIdentifiers([`${'k'.repeat(70)}A`, `${'k'.repeat(70)}B`, '', ''], 'fallback');
+  assert.equal(new Set(fitted.map((f) => f.name)).size, 4);
+  for (const f of fitted) assert.ok(Buffer.byteLength(f.name, 'utf8') <= 63);
+  assert.equal(fitted[2].name, 'fallback');
+  assert.equal(fitted[3].name, 'fallback2');
+});
+
+test('a key with a newline or tab is renamed rather than splitting the DDL across lines', () => {
+  // A raw newline inside a quoted Postgres identifier is legal, and it also makes the DDL
+  // unreadable line by line, which breaks every tool that parses it that way.
+  const g = jtsGenerate([{ ['a' + '\n' + 'b']: 1, ['tab' + '\t' + 'here']: 2 }], { name: 'T' });
+  const ddl = g.sql.slice(g.sql.indexOf('CREATE TABLE'));
+  for (const line of ddl.split('\n')) {
+    const quotes = (line.match(/"/g) || []).length;
+    assert.equal(quotes % 2, 0, `unbalanced quotes, so an identifier spans lines: ${line}`);
+  }
+  assert.match(g.sql, /"a_b" integer NOT NULL, -- from JSON key "a.nb": control characters/);
+  assert.match(g.sql, /"tab_here" integer/);
+});
+
+test('the load statement escapes control characters instead of embedding them', () => {
+  const g = jtsGenerate([{ ['a' + '\n' + 'b']: 1, ok: 2 }], { name: 'T' });
+  // The statement is laid out over several lines, so its own newlines are fine; any
+  // OTHER control character means a key was embedded raw.
+  assert.doesNotMatch(g.pgLoadStatement, /[\u0000-\u0009\u000b-\u001F\u007F]/);
+  assert.match(g.pgLoadStatement, /E'a\\u000ab'/);
+});
+
+test('a key holding U+0000 is reported as unloadable rather than emitted into SQL', () => {
+  // Postgres rejects U+0000 in both text and jsonb, so no statement can name such a key.
+  const nul = 'a' + String.fromCharCode(0) + 'b';
+  const g = jtsGenerate([{ [nul]: 1, ok: 2 }], { name: 'T' });
+  assert.match(g.sql, /WARNING: the JSON key "a\\u0000b" contains U\+0000/);
+  assert.match(g.sql, /"a_b" integer NOT NULL/);
+  // The key must not appear raw anywhere in the emitted SQL.
+  assert.equal(g.sql.includes(String.fromCharCode(0)), false);
+  assert.equal(g.pgLoadStatement.includes(String.fromCharCode(0)), false);
+  // And the load statement must not try to rewrite a key it cannot name.
+  assert.doesNotMatch(g.pgLoadStatement, /jsonb_build_object/);
 });

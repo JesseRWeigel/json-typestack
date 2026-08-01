@@ -193,6 +193,20 @@ Each target has different rules.
   - a key **longer than 63 bytes**, which Postgres truncates silently. It is truncated on
     a byte budget (not a character count, so multi-byte keys stay valid UTF-8), and any
     collision that truncation causes gets `2`, `3`, ... appended.
+  - a key containing a **control character**. A newline or a tab inside a quoted
+    identifier is legal Postgres and it splits the DDL across lines, which breaks every
+    tool that reads it line by line. Control characters become `_`. A key holding
+    **U+0000** is worse than that: Postgres rejects it in both `text` and `jsonb`, so no
+    statement can name it and no document containing it can be cast to jsonb. The DDL
+    carries a `WARNING` naming that key and saying its column cannot be loaded.
+
+  Constraint names hit the same 63-byte ceiling, so they go through the same
+  de-duplicating path. Two columns whose names differ only past byte 63 would otherwise
+  produce two identically named CHECK constraints, and Postgres rejects the whole
+  `CREATE TABLE` with "already exists".
+
+  String literals in the load statement escape control characters through Postgres's
+  `E'...'` form, so a key with a newline in it does not split the statement either.
 
   When a column is renamed, `jsonb_populate_record` would look for the column name and
   never find the original key, so the load statement in the DDL header rewrites those keys
@@ -258,15 +272,37 @@ it, using real implementations rather than re-implementations:
 | Postgres | `pglite`, a real Postgres compiled to WASM, running the generated DDL |
 | TypeScript | the actual `tsc --strict`, compiling the generated interfaces plus typed fixtures |
 
-Five scenarios carry 12 input samples and 25 deliberately wrong documents. Each wrong
+Seven scenarios carry 16 input samples and 31 deliberately wrong documents. Each wrong
 document declares, per output, whether that output must reject it, so the check fails in
 both directions: a layer that starts accepting something it used to reject fails, and so
-does one that starts rejecting something it used to accept.
+does one that starts rejecting something it used to accept. Of the 31, Zod must reject 30,
+JSON Schema 28, TypeScript 30 and Postgres 18; every "must accept" is pinned with the
+reason it cannot reject.
 
 Separately, `scripts/recount.mjs` derives optionality a third time. It counts key presence
 straight from the raw samples with a loop that imports nothing from `src/`, then reads the
 answer back out of the CLI's **text** output. Two derivations that share code can be wrong
 together; this one shares only the sample data.
+
+### What the check found
+
+Three real defects, each caught by running the artefacts rather than reading them:
+
+1. **A renamed column silently arrived NULL.** The DDL header told you to load with
+   `jsonb_populate_record`, which looks for the COLUMN name. A column renamed from the
+   empty-string key therefore never matched anything, and pglite failed the insert on a
+   NOT NULL violation. The load statement now rewrites renamed keys, and the agreement
+   check runs the statement the tool itself printed.
+2. **Two long keys produced two identical CHECK constraint names.** Truncating to 63 bytes
+   collapsed them, and Postgres rejected the whole `CREATE TABLE`. Constraint names now go
+   through the same de-duplicating path as column names.
+3. **A control character in a key broke the DDL.** A newline split a quoted identifier
+   across two lines; a NUL made the server reject the statement with "invalid message
+   format". Both are handled, and U+0000 is reported as unloadable rather than emitted.
+
+While fixing the third of those, the fix itself embedded a literal NUL byte in
+`src/naming.js`. `scripts/hygiene.py` caught it on the next run, which is the whole reason
+that check reads files as bytes in Python rather than shelling out to `grep`.
 
 ### Attacking the verify
 
@@ -299,25 +335,25 @@ json-typestack verify, in ~/Projects/thousand/projects/json-typestack
   ok    @electric-sql/pglite present (0.5.4)
 
 1. unit suite
-  ok    56 unit tests passed
+  ok    61 unit tests passed
 
 2. four-way agreement: TypeScript, Zod, JSON Schema and Postgres on the same samples
-    input samples accepted by the generated Zod schema                           12/12
-    input samples accepted by the generated JSON Schema (ajv)                    12/12
-    input samples accepted by the generated Postgres DDL (pglite)                12/12
-    generated fixtures accepted by the generated Zod schema                      15/15
-    generated fixtures accepted by the generated JSON Schema                     15/15
-    generated fixtures accepted by the generated Postgres DDL                    15/15
-    wrong documents where Zod matched the declared expectation                   25/25
-    wrong documents where JSON Schema matched the declared expectation           25/25
-    wrong documents where Postgres matched the declared expectation              25/25
-    wrong documents where tsc matched the declared expectation                   25/25
-    scenarios whose generated TypeScript + fixtures compiled under tsc --strict  5/5
+    input samples accepted by the generated Zod schema                           16/16
+    input samples accepted by the generated JSON Schema (ajv)                    16/16
+    input samples accepted by the generated Postgres DDL (pglite)                16/16
+    generated fixtures accepted by the generated Zod schema                      21/21
+    generated fixtures accepted by the generated JSON Schema                     21/21
+    generated fixtures accepted by the generated Postgres DDL                    21/21
+    wrong documents where Zod matched the declared expectation                   31/31
+    wrong documents where JSON Schema matched the declared expectation           31/31
+    wrong documents where Postgres matched the declared expectation              31/31
+    wrong documents where tsc matched the declared expectation                   31/31
+    scenarios whose generated TypeScript + fixtures compiled under tsc --strict  7/7
   AGREEMENT OK
   ok    all four outputs agreed on every scenario
 
 3. independent recount of optionality straight from the raw samples
-    25 top-level fields recounted from raw samples across 5 scenarios
+    34 top-level fields recounted from raw samples across 7 scenarios
     RECOUNT OK: optional, required and NOT NULL all match an independent count
   ok    the independent recount agrees with the generated artefacts
 
@@ -333,14 +369,14 @@ json-typestack verify, in ~/Projects/thousand/projects/json-typestack
   ok    empty root object (1187 bytes of output)
   ok    null everywhere (1206 bytes of output)
   ok    150 levels of nesting produced 151 interfaces
-  ok    a 5000-key object generated in 81ms and warned about the 1600-column limit
+  ok    a 5000-key object generated in 87ms and warned about the 1600-column limit
 
 6. the page is built from src/ and is not stale
-  ok    docs/index.html matches the current src/ (44528 bytes)
+  ok    docs/index.html matches the current src/ (48790 bytes)
 
 7. the page in a real browser
     playwright-core from ~/Projects/thousand/projects/a11y-sweep/node_modules/playwright-core
-    ok    port 40413 is serving this project's page (44528 bytes)
+    ok    port 40997 is serving this project's page (48790 bytes)
     ok    page identity is "json-typestack"
     ok    the inline script ran and exposed the generator
     ok    the default example rendered 196 characters of TypeScript
@@ -366,7 +402,7 @@ json-typestack verify, in ~/Projects/thousand/projects/json-typestack
   ok    22 passed browser assertions
 
 8. hygiene of committed files
-    28 tracked files scanned, 198589 bytes, 0 with NUL bytes
+    29 tracked files scanned, 218704 bytes, 0 with NUL bytes
     7 detectors self-tested against synthetic samples
     NUL detection confirmed on a synthetic sample
     the AWS pattern stays case-sensitive, so base64 does not false-positive
@@ -377,7 +413,7 @@ json-typestack verify, in ~/Projects/thousand/projects/json-typestack
   ok    README has a Status section
   ok    README has a Limitations section
   ok    README Status carries this script's success line
-  ok    README's claim of 56 unit tests matches this run
+  ok    README's claim of 61 unit tests matches this run
   ok    README carries no unfinished markers
 
 26 passed, 0 failed
@@ -390,10 +426,14 @@ VERIFY OK
   hidden.** Once a value is stored as `text`, "it was a JSON number" is not recoverable,
   so a `text` column accepts the number `7` where the samples only ever held strings.
   Postgres `boolean` input accepts the text `'yes'`. A nested object is one `jsonb` value,
-  so its inner required keys are not enforced by the table. Seven of the 25 wrong
-  documents in the agreement suite are accepted by Postgres for reasons like these, and
-  each one is pinned with its reason in `test/scenarios.mjs`, so the check fails if the
-  behaviour ever changes in either direction.
+  so its inner required keys are not enforced by the table. 13 of the 31 wrong documents
+  in the agreement suite are accepted by Postgres for reasons like these, and each one is
+  pinned with its reason in `test/scenarios.mjs`, so the check fails if the behaviour ever
+  changes in either direction.
+- **A JSON key containing U+0000 cannot round-trip through Postgres.** Neither `text` nor
+  `jsonb` can hold that character, so the column is created and the DDL carries a `WARNING`
+  saying it cannot be loaded from the source documents. The other three outputs handle the
+  key normally.
 - **`ajv` 8.20 does not enforce an empty string listed in `required`.** The generated JSON
   Schema is correct; this particular validator ignores that one entry. The behaviour is
   pinned in `test/ajv_limits.test.js` so the expectation flips the day ajv fixes it.

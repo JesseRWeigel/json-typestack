@@ -92,11 +92,14 @@ export function jtsBuildNames(rootTs, rootName) {
 //
 // Every generated identifier is double quoted, which means the JSON key can be carried
 // through EXACTLY: `2fa`, `my-field`, `class`, `SELECT` and `Email` are all legal inside
-// double quotes and keep their case. Only two things force a rename:
+// double quotes and keep their case. Three things force a rename:
 //   1. the empty string, which Postgres rejects as a zero-length delimited identifier
 //   2. anything longer than 63 bytes, which Postgres silently truncates
-// plus the collisions that truncation can create. Renames are reported so the DDL can
-// carry a comment saying which JSON key each renamed column came from.
+//   3. control characters: a NUL makes the server reject the statement outright, and a
+//      newline or tab is legal but splits the DDL across lines
+// plus the collisions any of those can create. Renames are reported so the DDL can carry a
+// comment saying which JSON key each renamed column came from, and so the load statement
+// can rewrite those keys on the way in.
 
 export const JTS_PG_NAME_LIMIT = 63;
 
@@ -123,35 +126,69 @@ export function jtsQuotePgIdent(name) {
   return `"${String(name).replace(/"/g, '""')}"`;
 }
 
-// Maps a list of JSON keys to Postgres column names. Returns
-// [{ key, column, renamed, reason }] in the order given.
-export function jtsPgColumnNames(keys) {
+// Fits a list of desired names into Postgres's identifier rules: no empty string, at most
+// 63 bytes, and no duplicates once truncation has done its work. Returns
+// [{ raw, name, renamed, reason }] in the order given.
+//
+// Truncation is what makes the de-duplication necessary rather than theoretical. Two keys
+// that differ only past byte 63 truncate to the same identifier, and Postgres rejects the
+// whole CREATE TABLE with "already exists". That bites constraint names as readily as
+// column names, so both go through here.
+// U+0000 through U+001F plus U+007F, written as unicode escapes so this file stays
+// plain text. One embedded NUL byte would make git and grep treat the whole file as
+// binary and skip it in every text scan, including the secret scan.
+// Two constants rather than one: a regex carrying /g keeps lastIndex between calls, so
+// sharing one object between .test() and .replace() makes the test skip every other
+// input, which is a silent wrong answer rather than an error.
+const JTS_HAS_CONTROL_CHAR = /[\u0000-\u001F\u007F]/;
+const JTS_ALL_CONTROL_CHARS = /[\u0000-\u001F\u007F]/g;
+
+export function jtsPgFitIdentifiers(rawNames, emptyFallback = 'column') {
   const used = new Set();
   const out = [];
-  for (const key of keys) {
-    let base = key;
-    let reason = null;
-    if (base === '') {
-      base = 'column';
-      reason = 'the empty string is not a legal Postgres identifier';
-    } else if (jtsUtf8Length(base) > JTS_PG_NAME_LIMIT) {
-      base = jtsTruncateUtf8(base, JTS_PG_NAME_LIMIT);
-      reason = `longer than ${JTS_PG_NAME_LIMIT} bytes, which Postgres truncates`;
+  for (const raw of rawNames) {
+    let base = raw;
+    const reasons = [];
+    if (JTS_HAS_CONTROL_CHAR.test(base)) {
+      // A NUL makes Postgres reject the statement outright ("invalid message format"),
+      // and a newline or tab inside a quoted identifier is legal but splits the DDL across
+      // lines, which breaks every line-oriented tool that reads it. Replace them.
+      base = base.replace(JTS_ALL_CONTROL_CHARS, '_');
+      reasons.push('control characters are not usable in a Postgres identifier');
     }
-    let column = base;
-    if (used.has(column)) {
+    if (base === '') {
+      base = emptyFallback;
+      reasons.push('the empty string is not a legal Postgres identifier');
+    }
+    if (jtsUtf8Length(base) > JTS_PG_NAME_LIMIT) {
+      base = jtsTruncateUtf8(base, JTS_PG_NAME_LIMIT);
+      reasons.push(`longer than ${JTS_PG_NAME_LIMIT} bytes, which Postgres truncates`);
+    }
+    let name = base;
+    if (used.has(name)) {
       let n = 2;
       const suffixRoom = (s) => jtsTruncateUtf8(base, JTS_PG_NAME_LIMIT - String(s).length) + s;
       while (used.has(suffixRoom(n))) n += 1;
-      column = suffixRoom(n);
-      reason = reason
-        ? `${reason}, and the truncated name collided`
-        : 'another key already claimed this column name';
+      name = suffixRoom(n);
+      reasons.push(
+        reasons.length ? 'and the resulting name collided' : 'another key already claimed this name'
+      );
     }
-    used.add(column);
-    out.push({ key, column, renamed: column !== key, reason });
+    used.add(name);
+    out.push({ raw, name, renamed: name !== raw, reason: reasons.length ? reasons.join(', ') : null });
   }
   return out;
+}
+
+// Maps a list of JSON keys to Postgres column names. Returns
+// [{ key, column, renamed, reason }] in the order given.
+export function jtsPgColumnNames(keys) {
+  return jtsPgFitIdentifiers(keys, 'column').map((m) => ({
+    key: m.raw,
+    column: m.name,
+    renamed: m.renamed,
+    reason: m.reason,
+  }));
 }
 
 // Table name: lower snake_case of the root type name. Quoted in the DDL, so reserved

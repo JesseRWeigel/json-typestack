@@ -24,7 +24,7 @@
 // rather than merely documented.
 
 import { jtsSortedFields, jtsMembers, jtsIsNullable, jtsIsOptional, jtsIsEmptyObject } from './model.js';
-import { jtsQuotePgIdent, jtsPgColumnNames, jtsPgTableName } from './naming.js';
+import { jtsQuotePgIdent, jtsPgColumnNames, jtsPgTableName, jtsPgFitIdentifiers } from './naming.js';
 
 export const JTS_PG_MAX_COLUMNS = 1600;
 
@@ -81,8 +81,35 @@ export function jtsPgColumnType(ts) {
   };
 }
 
-function jtsPgLiteral(s) {
-  return `'${String(s).replace(/'/g, "''")}'`;
+// A Postgres text literal. Plain quoting handles the ordinary case; a value carrying a
+// control character or a backslash needs the E'' escape-string form, because a raw newline
+// inside a literal would split the emitted DDL across lines. U+0000 is the one character
+// with no representation at all: Postgres text and jsonb both reject it, which is why
+// jtsPgUnloadableKeys exists.
+const JTS_NUL = /\u0000/;
+const JTS_NEEDS_ESCAPE_STRING = /[\u0000-\u001F\u007F\\]/;
+
+function jtsPgLiteral(str) {
+  const s = String(str);
+  if (!JTS_NEEDS_ESCAPE_STRING.test(s)) return `'${s.replace(/'/g, "''")}'`;
+  let out = '';
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    if (ch === "'") out += "\\'";
+    else if (ch === '\\') out += '\\\\';
+    else if (c < 0x20 || c === 0x7f) out += `\\u${c.toString(16).padStart(4, '0')}`;
+    else out += ch;
+  }
+  return `E'${out}'`;
+}
+
+// Keys Postgres cannot carry at all. A U+0000 is rejected by both the text and the jsonb
+// input functions, so no statement can name such a key and no document containing one can
+// be cast to jsonb. The DDL warns about them by name rather than emitting SQL that fails.
+export function jtsPgUnloadableKeys(rootTs) {
+  const shape = rootTs.object;
+  if (!shape) return [];
+  return jtsSortedFields(shape).map((f) => f.key).filter((k) => JTS_NUL.test(k));
 }
 
 // The statement that loads one JSON document into the generated table.
@@ -96,7 +123,11 @@ export function jtsPgLoadStatement(rootTs, rootName) {
   const q = jtsQuotePgIdent(table);
   const shape = rootTs.object;
   const renames = shape
-    ? jtsPgColumnNames(jtsSortedFields(shape).map((f) => f.key)).filter((m) => m.renamed)
+    ? jtsPgColumnNames(jtsSortedFields(shape).map((f) => f.key))
+        .filter((m) => m.renamed)
+        // A key holding U+0000 cannot appear in any SQL literal, so it is left out of the
+        // rewrite; jtsPgUnloadableKeys reports it and the DDL carries a warning.
+        .filter((m) => !JTS_NUL.test(m.key))
     : [];
   if (renames.length === 0) {
     return `INSERT INTO ${q}\nSELECT * FROM jsonb_populate_record(null::${q}, $1::jsonb);`;
@@ -125,6 +156,13 @@ export function jtsEmitPostgres(rootTs, names, opts = {}) {
   lines.push('-- Load one document per row with:');
   for (const l of jtsPgLoadStatement(rootTs, rootName).split('\n')) lines.push(`--   ${l}`);
   lines.push('-- No primary key is inferred: samples cannot show which field is unique.');
+  for (const key of jtsPgUnloadableKeys(rootTs)) {
+    lines.push(
+      `-- WARNING: the JSON key ${JSON.stringify(key)} contains U+0000, which Postgres`
+    );
+    lines.push('-- rejects in both text and jsonb. Its column exists but cannot be loaded');
+    lines.push('-- from the source documents; strip or re-encode that key first.');
+  }
 
   const shape = rootTs.object;
   if (!shape || shape.fields.size === 0) {
@@ -153,7 +191,7 @@ export function jtsEmitPostgres(rootTs, names, opts = {}) {
   lines.push(`CREATE TABLE ${jtsQuotePgIdent(table)} (`);
 
   const body = [];
-  const checks = [];
+  const checkSpecs = [];
   fields.forEach((f, i) => {
     const { column, renamed, reason } = mapped[i];
     const { type, checkKinds, note } = jtsPgColumnType(f.type);
@@ -183,11 +221,17 @@ export function jtsEmitPostgres(rootTs, names, opts = {}) {
         allowed.length === 1
           ? `jsonb_typeof(${q}) = ${list}`
           : `jsonb_typeof(${q}) IN (${list})`;
-      checks.push(
-        `  CONSTRAINT ${jtsQuotePgIdent(`${table}_${column}_kind`.slice(0, 63))} CHECK (${q} IS NULL OR ${expr}),`
-      );
+      checkSpecs.push({ want: `${table}_${column}_kind`, body: `CHECK (${q} IS NULL OR ${expr})` });
     }
   });
+
+  // Constraint names hit the same 63-byte ceiling as column names, and two long columns
+  // truncate to the same constraint name, which Postgres rejects outright. Fit them
+  // through the same de-duplicating path.
+  const checkNames = jtsPgFitIdentifiers(checkSpecs.map((c) => c.want), 'kind_check');
+  const checks = checkSpecs.map(
+    (c, i) => `  CONSTRAINT ${jtsQuotePgIdent(checkNames[i].name)} ${c.body},`
+  );
 
   const all = [...body, ...checks];
   // Strip the trailing comma from the last entry, keeping any trailing comment.

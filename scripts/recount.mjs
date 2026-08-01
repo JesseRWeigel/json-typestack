@@ -68,6 +68,52 @@ function notNullFromSql(text) {
   return { notNull, seen };
 }
 
+// The column name a key SHOULD get, re-derived here from the rules the README states,
+// with a Buffer-based implementation rather than the codepoint-based one in src/naming.js.
+// Writing it a second way is the point: a helper that called into src/ could not catch a
+// bug in src/.
+function expectedColumnNames(keys) {
+  const used = new Set();
+  const truncate = (s) => {
+    let buf = Buffer.from(s, 'utf8');
+    if (buf.length <= 63) return s;
+    buf = buf.subarray(0, 63);
+    // Drop any trailing bytes that would leave a partial UTF-8 sequence.
+    let text = buf.toString('utf8');
+    while (text.includes('�')) {
+      buf = buf.subarray(0, buf.length - 1);
+      text = buf.toString('utf8');
+    }
+    return text;
+  };
+  const truncateTo = (s, limit) => {
+    if (Buffer.byteLength(s, 'utf8') <= limit) return s;
+    let out = '';
+    for (const ch of s) {
+      if (Buffer.byteLength(out + ch, 'utf8') > limit) break;
+      out += ch;
+    }
+    return out;
+  };
+  return keys.map((key) => {
+    let base = '';
+    for (const ch of key) {
+      const c = ch.codePointAt(0);
+      base += c < 0x20 || c === 0x7f ? '_' : ch;
+    }
+    if (base === '') base = 'column';
+    base = truncate(base);
+    let name = base;
+    let n = 2;
+    while (used.has(name)) {
+      name = truncateTo(base, 63 - String(n).length) + n;
+      n += 1;
+    }
+    used.add(name);
+    return name;
+  });
+}
+
 for (const sc of SCENARIOS) {
   // --- the independent count -----------------------------------------------------------
   const present = new Map();
@@ -79,6 +125,11 @@ for (const sc of SCENARIOS) {
       if (sample[key] === null) sawNull.add(key);
     }
   }
+  // Columns are emitted in codepoint order, and the rename rules depend on that order.
+  const sortedKeys = [...present.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const expectedColumn = new Map(
+    sortedKeys.map((k, i) => [k, expectedColumnNames(sortedKeys)[i]])
+  );
 
   const file = join(work, `${sc.id}.json`);
   writeFileSync(file, JSON.stringify(sc.samples));
@@ -109,7 +160,7 @@ for (const sc of SCENARIOS) {
       );
     }
     // A column is NOT NULL only when the key was in every sample AND never null.
-    const columnKey = key === '' ? 'column' : key;
+    const columnKey = expectedColumn.get(key);
     const shouldBeNotNull = !shouldBeOptional && !isNullable;
     if (sql.notNull.has(columnKey) !== shouldBeNotNull) {
       problems.push(
