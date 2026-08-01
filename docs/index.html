@@ -1,0 +1,1252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>json-typestack</title>
+<meta name="description" content="Paste JSON samples and get TypeScript, Zod, JSON Schema, Postgres DDL and fixtures that agree with each other.">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f7f7f5;
+  --panel: #ffffff;
+  --ink: #1a1c20;
+  --ink-dim: #5c6470;
+  --line: #d9dbe0;
+  --accent: #2f5fd0;
+  --accent-ink: #ffffff;
+  --code-bg: #f2f3f6;
+  --warn-bg: #fdf3e3;
+  --warn-ink: #7a4b00;
+  --bad-bg: #fdeceb;
+  --bad-ink: #8c1d18;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #14161a;
+    --panel: #1c1f25;
+    --ink: #e7e9ee;
+    --ink-dim: #a0a8b6;
+    --line: #333944;
+    --accent: #7ea6ff;
+    --accent-ink: #10131a;
+    --code-bg: #12151a;
+    --warn-bg: #2f2716;
+    --warn-ink: #f0c46a;
+    --bad-bg: #37201f;
+    --bad-ink: #ff9f97;
+  }
+}
+/* The toggle must win over the media query in BOTH directions. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7f5;
+  --panel: #ffffff;
+  --ink: #1a1c20;
+  --ink-dim: #5c6470;
+  --line: #d9dbe0;
+  --accent: #2f5fd0;
+  --accent-ink: #ffffff;
+  --code-bg: #f2f3f6;
+  --warn-bg: #fdf3e3;
+  --warn-ink: #7a4b00;
+  --bad-bg: #fdeceb;
+  --bad-ink: #8c1d18;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14161a;
+  --panel: #1c1f25;
+  --ink: #e7e9ee;
+  --ink-dim: #a0a8b6;
+  --line: #333944;
+  --accent: #7ea6ff;
+  --accent-ink: #10131a;
+  --code-bg: #12151a;
+  --warn-bg: #2f2716;
+  --warn-ink: #f0c46a;
+  --bad-bg: #37201f;
+  --bad-ink: #ff9f97;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 64px; }
+
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
+h1 span { font-family: var(--mono); font-weight: 600; }
+.tagline { color: var(--ink-dim); margin: 6px 0 0; max-width: 62ch; }
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button[aria-pressed="true"], .tab[aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 18px;
+  min-width: 0;
+}
+label { display: block; font-size: 0.85rem; color: var(--ink-dim); margin-bottom: 4px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.row > * { min-width: 0; }
+input[type="text"], textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+  max-width: 100%;
+}
+textarea { font-family: var(--mono); font-size: 0.86rem; min-height: 190px; resize: vertical; }
+.name-field { flex: 1 1 200px; }
+.examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.examples button { font-size: 0.85rem; padding: 4px 10px; }
+
+.status { margin-top: 10px; font-size: 0.9rem; color: var(--ink-dim); }
+.status.bad { color: var(--bad-ink); background: var(--bad-bg); padding: 8px 10px; border-radius: 8px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 0.88rem; }
+.facts li { color: var(--ink-dim); }
+.facts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.tab { white-space: nowrap; }
+.panel { display: none; margin-top: 12px; }
+.panel[data-active="true"] { display: block; }
+.panel h2 { font-size: 0.95rem; margin: 0 0 4px; }
+.panel p.note { margin: 0 0 10px; color: var(--ink-dim); font-size: 0.88rem; }
+pre {
+  margin: 0;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  tab-size: 2;
+}
+.foot { margin-top: 28px; color: var(--ink-dim); font-size: 0.88rem; }
+.foot code { font-family: var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 5px; }
+.warn { background: var(--warn-bg); color: var(--warn-ink); padding: 8px 10px; border-radius: 8px; font-size: 0.88rem; margin-top: 10px; }
+@media (max-width: 520px) {
+  .wrap { padding: 16px 12px 48px; }
+  h1 { font-size: 1.25rem; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1><span>json-typestack</span></h1>
+    <p class="tagline">Paste several JSON samples of the same shape. A field missing from any one
+      of them is optional; a field that is null in one of them is nullable. Those are different
+      things, and all five outputs below keep them apart.</p>
+  </div>
+  <button id="theme" type="button" aria-pressed="false">Theme</button>
+</header>
+
+<div class="card">
+  <div class="row">
+    <div class="name-field">
+      <label for="name">Root type name</label>
+      <input type="text" id="name" value="User" spellcheck="false" autocomplete="off">
+    </div>
+  </div>
+  <div style="margin-top:12px">
+    <label for="input">Samples: one JSON object, an array of objects, or NDJSON</label>
+    <textarea id="input" spellcheck="false" autocomplete="off"></textarea>
+  </div>
+  <div class="examples">
+    <button type="button" data-example="user">Optional vs nullable</button>
+    <button type="button" data-example="widen">Widened types</button>
+    <button type="button" data-example="awkward">Awkward keys</button>
+    <button type="button" data-example="nested">Nested and arrays</button>
+  </div>
+  <div id="status" class="status">&nbsp;</div>
+  <ul class="facts" id="facts"></ul>
+</div>
+
+<div class="card">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-target="ts" aria-selected="true">TypeScript</button>
+    <button class="tab" role="tab" data-target="zod" aria-selected="false">Zod</button>
+    <button class="tab" role="tab" data-target="jsonschema" aria-selected="false">JSON Schema</button>
+    <button class="tab" role="tab" data-target="sql" aria-selected="false">Postgres</button>
+    <button class="tab" role="tab" data-target="fixtures" aria-selected="false">Fixtures</button>
+  </div>
+
+  <section class="panel" id="panel-ts" data-active="true">
+    <h2>TypeScript</h2>
+    <p class="note"><code>email?: string</code> means the key can be absent.
+      <code>email: string | null</code> means it is always there and can hold null.</p>
+    <pre id="out-ts"></pre>
+  </section>
+  <section class="panel" id="panel-zod">
+    <h2>Zod</h2>
+    <p class="note">Plain ESM, so it runs without a build step. Objects are non-strict, matching
+      <code>additionalProperties: true</code> in the JSON Schema.</p>
+    <pre id="out-zod"></pre>
+  </section>
+  <section class="panel" id="panel-jsonschema">
+    <h2>JSON Schema (draft 2020-12)</h2>
+    <p class="note">Optional keys are left out of <code>required</code>. Nullable keys get
+      <code>"null"</code> added to their <code>type</code>.</p>
+    <pre id="out-jsonschema"></pre>
+  </section>
+  <section class="panel" id="panel-sql">
+    <h2>Postgres</h2>
+    <p class="note">A row cannot express an absent column, so optional and nullable both become a
+      nullable column and the comment says which one it was.</p>
+    <pre id="out-sql"></pre>
+  </section>
+  <section class="panel" id="panel-fixtures">
+    <h2>Example fixtures</h2>
+    <p class="note"><code>minimal</code> carries only the required keys, <code>full</code> carries
+      every key, <code>nulls</code> is null wherever null is allowed. All three validate against
+      the schemas above.</p>
+    <pre id="out-fixtures"></pre>
+  </section>
+</div>
+
+<p class="foot">Same generator as the command line tool:
+  <code>npx json-typestack --name User samples.json</code>.
+  Everything runs in this page; nothing is uploaded.</p>
+</div>
+
+<script>
+/* JTS-CORE-START */
+// Inlined from src/ by scripts/build-docs.mjs. Do not edit this block; edit src/.
+// ---- src/model.js ----------------------------------------------------
+// Sample inference. Builds one TypeSet per position in the document tree by folding
+// every sample into it, keeping the counts that later let us decide optional vs required.
+//
+// A TypeSet records, for one position:
+//   count            how many values were observed here at all
+//   scalars          how many of each JSON scalar kind
+//   object           the merged object shape, if an object was ever seen here
+//   array            the merged array shape, if an array was ever seen here
+//
+// Optionality is a property of a FIELD, not of a type: field.present < object.count.
+// Nullability is a property of the TYPE: scalars.null > 0. They are stored separately
+// and stay separate all the way to the four emitters.
+
+function jtsNewTypeSet() {
+  return {
+    count: 0,
+    scalars: { string: 0, number: 0, integer: 0, boolean: 0, null: 0 },
+    maxStringLength: 0,
+    intMin: null,
+    intMax: null,
+    object: null, // { count, fields: Map<key, {present, type}> , emptyCount }
+    array: null, // { count, element: TypeSet, emptyCount }
+  };
+}
+
+// Guard against self-referential input. JSON.parse output cannot be cyclic, but the
+// browser page and library callers can hand us a live object graph.
+const JTS_MAX_DEPTH = 200;
+
+function jtsObserve(ts, value, depth = 0) {
+  if (depth > JTS_MAX_DEPTH) {
+    throw new Error(`sample nests deeper than ${JTS_MAX_DEPTH} levels`);
+  }
+  ts.count += 1;
+  if (value === null) {
+    ts.scalars.null += 1;
+    return ts;
+  }
+  const t = typeof value;
+  if (t === 'boolean') {
+    ts.scalars.boolean += 1;
+    return ts;
+  }
+  if (t === 'number') {
+    if (!Number.isFinite(value)) throw new Error('non-finite numbers are not valid JSON');
+    if (Number.isInteger(value)) {
+      ts.scalars.integer += 1;
+      ts.intMin = ts.intMin === null ? value : Math.min(ts.intMin, value);
+      ts.intMax = ts.intMax === null ? value : Math.max(ts.intMax, value);
+    } else {
+      ts.scalars.number += 1;
+    }
+    return ts;
+  }
+  if (t === 'string') {
+    ts.scalars.string += 1;
+    if (value.length > ts.maxStringLength) ts.maxStringLength = value.length;
+    return ts;
+  }
+  if (Array.isArray(value)) {
+    if (!ts.array) ts.array = { count: 0, emptyCount: 0, element: jtsNewTypeSet() };
+    ts.array.count += 1;
+    if (value.length === 0) ts.array.emptyCount += 1;
+    for (const el of value) jtsObserve(ts.array.element, el, depth + 1);
+    return ts;
+  }
+  if (t === 'object') {
+    if (!ts.object) ts.object = { count: 0, fields: new Map() };
+    ts.object.count += 1;
+    for (const key of Object.keys(value)) {
+      let field = ts.object.fields.get(key);
+      if (!field) {
+        field = { present: 0, type: jtsNewTypeSet() };
+        ts.object.fields.set(key, field);
+      }
+      field.present += 1;
+      jtsObserve(field.type, value[key], depth + 1);
+    }
+    return ts;
+  }
+  throw new Error(`value of type ${t} is not representable in JSON`);
+}
+
+// Codepoint order, locale independent. Every emitter sorts fields through this, which is
+// what makes output independent of the key order in the input.
+function jtsCompareKeys(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function jtsSortedFields(objectShape) {
+  return [...objectShape.fields.keys()]
+    .sort(jtsCompareKeys)
+    .map((key) => ({ key, ...objectShape.fields.get(key) }));
+}
+
+function jtsIsOptional(objectShape, field) {
+  return field.present < objectShape.count;
+}
+
+function jtsIsNullable(ts) {
+  return ts.scalars.null > 0;
+}
+
+// The non-null members of a TypeSet, in canonical order. Canonical order is fixed so that
+// a union renders the same regardless of which sample happened to arrive first.
+// Order: boolean, number, string, array, object.
+function jtsMembers(ts) {
+  const out = [];
+  if (ts.scalars.boolean > 0) out.push('boolean');
+  if (ts.scalars.number > 0) out.push('number');
+  else if (ts.scalars.integer > 0) out.push('integer');
+  if (ts.scalars.string > 0) out.push('string');
+  if (ts.array) out.push('array');
+  if (ts.object) out.push('object');
+  return out;
+}
+
+// True when nothing at all was observed here, which happens only for the element type of
+// an array that was always empty.
+function jtsIsUnknown(ts) {
+  return ts.count === 0;
+}
+
+// An object shape with no fields at all: `{}` appeared in every sample.
+function jtsIsEmptyObject(ts) {
+  return !!ts.object && ts.object.fields.size === 0;
+}
+
+function jtsInfer(samples) {
+  if (!Array.isArray(samples)) throw new Error('samples must be an array');
+  if (samples.length === 0) throw new Error('need at least one sample');
+  samples.forEach((s, i) => {
+    if (s === null || typeof s !== 'object' || Array.isArray(s)) {
+      throw new Error(`sample ${i} is not a JSON object (got ${s === null ? 'null' : Array.isArray(s) ? 'array' : typeof s})`);
+    }
+  });
+  const root = jtsNewTypeSet();
+  for (const s of samples) jtsObserve(root, s);
+  return root;
+}
+
+// ---- src/naming.js ---------------------------------------------------
+// Naming and identifier legality.
+//
+// Every nested object gets its own named type. The name is derived from the PATH to that
+// object, never from its contents, so two structurally identical objects at different
+// paths stay distinct and a name never depends on traversal luck:
+//
+//   root type name              User
+//   field `address`             UserAddress
+//   field `orders`, an array    UserOrdersItem
+//   `orders[].lineItems[]`      UserOrdersItemLineItemsItem
+//
+// Each object-key step contributes PascalCase(key); each step through an array
+// contributes the literal `Item`.
+//
+// Sanitising can make two different paths collide (`foo-bar` and `foo_bar` both become
+// `FooBar`). Collisions are resolved by appending 2, 3, ... in traversal order, which is
+// depth-first over codepoint-sorted keys, so the assignment is deterministic.
+
+
+// TypeScript / JavaScript identifier, conservative ASCII subset.
+const JTS_JS_IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+function jtsIsJsIdentifier(name) {
+  return JTS_JS_IDENT.test(name);
+}
+
+// A JS object literal key that is not a plain identifier has to be quoted. `class` and
+// other reserved words are legal as property names, so they are NOT quoted.
+function jtsJsKey(key) {
+  return jtsIsJsIdentifier(key) ? key : JSON.stringify(key);
+}
+
+function jtsPascal(key) {
+  const parts = String(key).split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (parts.length === 0) return 'Field';
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+}
+
+// The root name is the one place a leading digit or an empty string would produce an
+// illegal type name, because nothing is prefixed in front of it.
+function jtsRootTypeName(raw) {
+  const p = jtsPascal(raw === undefined || raw === null ? '' : raw);
+  if (p === 'Field' && !String(raw ?? '').trim()) return 'Root';
+  return /^[0-9]/.test(p) ? `T${p}` : p;
+}
+
+// Walks the tree and assigns a name to every object shape that has at least one field.
+// Returns { byShape: Map<objectShape, name>, order: [{name, ts, shape}] } where `order`
+// is the traversal order: root first, then depth first. Emitters that need dependencies
+// first (Zod) reverse-sort it themselves.
+function jtsBuildNames(rootTs, rootName) {
+  const byShape = new Map();
+  const order = [];
+  const used = new Set();
+
+  const claim = (base) => {
+    if (!used.has(base)) {
+      used.add(base);
+      return base;
+    }
+    let n = 2;
+    while (used.has(`${base}${n}`)) n += 1;
+    used.add(`${base}${n}`);
+    return `${base}${n}`;
+  };
+
+  const walk = (ts, pathName) => {
+    if (ts.object && !jtsIsEmptyObject(ts) && !byShape.has(ts.object)) {
+      const name = claim(pathName);
+      byShape.set(ts.object, name);
+      order.push({ name, ts, shape: ts.object });
+      for (const f of jtsSortedFields(ts.object)) {
+        walk(f.type, `${name}${jtsPascal(f.key)}`);
+      }
+    } else if (ts.object && !jtsIsEmptyObject(ts)) {
+      // Already named (only possible if the same shape object is reachable twice, which
+      // the inference engine does not currently produce). Do not rename it.
+    }
+    if (ts.array) {
+      // The array element inherits the array's own path plus `Item`.
+      walk(ts.array.element, `${pathName}Item`);
+    }
+  };
+
+  walk(rootTs, rootName);
+  return { byShape, order };
+}
+
+// ---------------------------------------------------------------------------
+// Postgres identifiers.
+//
+// Every generated identifier is double quoted, which means the JSON key can be carried
+// through EXACTLY: `2fa`, `my-field`, `class`, `SELECT` and `Email` are all legal inside
+// double quotes and keep their case. Only two things force a rename:
+//   1. the empty string, which Postgres rejects as a zero-length delimited identifier
+//   2. anything longer than 63 bytes, which Postgres silently truncates
+// plus the collisions that truncation can create. Renames are reported so the DDL can
+// carry a comment saying which JSON key each renamed column came from.
+
+const JTS_PG_NAME_LIMIT = 63;
+
+function jtsUtf8Length(s) {
+  let n = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+  }
+  return n;
+}
+
+function jtsTruncateUtf8(s, limit) {
+  if (jtsUtf8Length(s) <= limit) return s;
+  let out = '';
+  for (const ch of s) {
+    if (jtsUtf8Length(out + ch) > limit) break;
+    out += ch;
+  }
+  return out;
+}
+
+function jtsQuotePgIdent(name) {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+// Maps a list of JSON keys to Postgres column names. Returns
+// [{ key, column, renamed, reason }] in the order given.
+function jtsPgColumnNames(keys) {
+  const used = new Set();
+  const out = [];
+  for (const key of keys) {
+    let base = key;
+    let reason = null;
+    if (base === '') {
+      base = 'column';
+      reason = 'the empty string is not a legal Postgres identifier';
+    } else if (jtsUtf8Length(base) > JTS_PG_NAME_LIMIT) {
+      base = jtsTruncateUtf8(base, JTS_PG_NAME_LIMIT);
+      reason = `longer than ${JTS_PG_NAME_LIMIT} bytes, which Postgres truncates`;
+    }
+    let column = base;
+    if (used.has(column)) {
+      let n = 2;
+      const suffixRoom = (s) => jtsTruncateUtf8(base, JTS_PG_NAME_LIMIT - String(s).length) + s;
+      while (used.has(suffixRoom(n))) n += 1;
+      column = suffixRoom(n);
+      reason = reason
+        ? `${reason}, and the truncated name collided`
+        : 'another key already claimed this column name';
+    }
+    used.add(column);
+    out.push({ key, column, renamed: column !== key, reason });
+  }
+  return out;
+}
+
+// Table name: lower snake_case of the root type name. Quoted in the DDL, so reserved
+// words such as `user` and `order` are fine.
+function jtsPgTableName(rootTypeName) {
+  const snake = String(rootTypeName)
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  const name = snake || 'root';
+  return jtsTruncateUtf8(name, JTS_PG_NAME_LIMIT);
+}
+
+// ---- src/emit_ts.js --------------------------------------------------
+// TypeScript emitter.
+//
+// optional  ->  `email?: string`        the key may be absent
+// nullable  ->  `email: string | null`  the key is always there and may hold null
+// both      ->  `email?: string | null`
+//
+// Those three are distinct declarations and stay distinct in all four outputs.
+
+
+function jtsTsMemberExpr(member, ts, names) {
+  switch (member) {
+    case 'boolean':
+      return 'boolean';
+    case 'integer':
+    case 'number':
+      return 'number';
+    case 'string':
+      return 'string';
+    case 'array': {
+      const inner = jtsTsType(ts.array.element, names);
+      // `number | string` has to be parenthesised before `[]` or it parses as
+      // `number | (string[])`.
+      return /[ |]/.test(inner) ? `(${inner})[]` : `${inner}[]`;
+    }
+    case 'object':
+      return jtsIsEmptyObject(ts) ? 'Record<string, unknown>' : names.byShape.get(ts.object);
+    default:
+      throw new Error(`unknown member ${member}`);
+  }
+}
+
+function jtsTsType(ts, names) {
+  if (jtsIsUnknown(ts)) return 'unknown';
+  const parts = jtsMembers(ts).map((m) => jtsTsMemberExpr(m, ts, names));
+  if (jtsIsNullable(ts)) parts.push('null');
+  if (parts.length === 0) return 'unknown';
+  return parts.join(' | ');
+}
+
+function jtsEmitTypeScript(rootTs, names, opts = {}) {
+  const lines = [];
+  lines.push('// Generated by json-typestack. Do not edit by hand.');
+  lines.push(`// Inferred from ${opts.sampleCount ?? '?'} sample(s).`);
+  lines.push('');
+  for (const { name, ts, shape } of names.order) {
+    lines.push(`export interface ${name} {`);
+    for (const f of jtsSortedFields(shape)) {
+      const optional = jtsIsOptional(shape, f) ? '?' : '';
+      lines.push(`  ${jtsJsKey(f.key)}${optional}: ${jtsTsType(f.type, names)};`);
+    }
+    lines.push('}');
+    lines.push('');
+  }
+  if (names.order.length === 0) {
+    // The root object had no fields at all.
+    lines.push(`export type ${opts.rootName ?? 'Root'} = Record<string, unknown>;`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+// ---- src/emit_zod.js -------------------------------------------------
+// Zod emitter (zod 4). Emits plain JavaScript ESM so the schema can be imported and run
+// without a compile step; pair it with the TypeScript output for static types.
+//
+// optional  ->  .optional()   the key may be absent
+// nullable  ->  .nullable()   the key is present and may hold null
+// both      ->  .nullable().optional()
+//
+// Objects are non-strict, matching `additionalProperties: true` in the JSON Schema
+// output, so both accept a sample carrying extra keys.
+
+
+function jtsZodMemberExpr(member, ts, names) {
+  switch (member) {
+    case 'boolean':
+      return 'z.boolean()';
+    case 'integer':
+      return 'z.number().int()';
+    case 'number':
+      return 'z.number()';
+    case 'string':
+      return 'z.string()';
+    case 'array':
+      return `z.array(${jtsZodType(ts.array.element, names)})`;
+    case 'object':
+      return jtsIsEmptyObject(ts)
+        ? 'z.record(z.string(), z.unknown())'
+        : names.byShape.get(ts.object);
+    default:
+      throw new Error(`unknown member ${member}`);
+  }
+}
+
+function jtsZodType(ts, names) {
+  if (jtsIsUnknown(ts)) return 'z.unknown()';
+  const parts = jtsMembers(ts).map((m) => jtsZodMemberExpr(m, ts, names));
+  let expr;
+  if (parts.length === 0) expr = jtsIsNullable(ts) ? 'z.null()' : 'z.unknown()';
+  else if (parts.length === 1) expr = parts[0];
+  else expr = `z.union([${parts.join(', ')}])`;
+  // z.null() already covers null; do not stack .nullable() on top of it.
+  if (jtsIsNullable(ts) && parts.length > 0) expr += '.nullable()';
+  return expr;
+}
+
+function jtsEmitZod(rootTs, names, opts = {}) {
+  const lines = [];
+  lines.push('// Generated by json-typestack. Do not edit by hand.');
+  lines.push(`// Inferred from ${opts.sampleCount ?? '?'} sample(s).`);
+  lines.push('import { z } from "zod";');
+  lines.push('');
+  // Dependencies first: names.order is depth-first pre-order, so a parent always precedes
+  // its descendants. Reversing puts every descendant before the parent that references it.
+  const decls = [...names.order].reverse();
+  for (const { name, shape } of decls) {
+    lines.push(`export const ${name} = z.object({`);
+    for (const f of jtsSortedFields(shape)) {
+      let expr = jtsZodType(f.type, names);
+      if (jtsIsOptional(shape, f)) expr += '.optional()';
+      lines.push(`  ${jtsJsKey(f.key)}: ${expr},`);
+    }
+    lines.push('});');
+    lines.push('');
+  }
+  if (decls.length === 0) {
+    lines.push(`export const ${opts.rootName ?? 'Root'} = z.record(z.string(), z.unknown());`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+// ---- src/emit_jsonschema.js ------------------------------------------
+// JSON Schema emitter, draft 2020-12.
+//
+// optional  ->  the key is left out of the object's `required` array
+// nullable  ->  "null" is added to the key's `type`
+//
+// Nested objects go in `$defs` under the same names the TypeScript output uses, so the
+// two can be read side by side.
+//
+// `additionalProperties` is true, matching Zod's non-strict objects. Both therefore
+// accept a sample with an extra key, which keeps the two in agreement.
+
+
+const JTS_SCALAR_JSON_TYPE = {
+  boolean: 'boolean',
+  integer: 'integer',
+  number: 'number',
+  string: 'string',
+};
+
+function jtsJsonSchemaType(ts, names) {
+  if (jtsIsUnknown(ts)) return {}; // nothing observed: accept anything
+  const members = jtsMembers(ts);
+  const nullable = jtsIsNullable(ts);
+
+  if (members.length === 0) return { type: 'null' };
+
+  const allScalar = members.every((m) => m in JTS_SCALAR_JSON_TYPE);
+  if (allScalar) {
+    const types = members.map((m) => JTS_SCALAR_JSON_TYPE[m]);
+    if (nullable) types.push('null');
+    return { type: types.length === 1 ? types[0] : types };
+  }
+
+  const branches = members.map((m) => {
+    if (m in JTS_SCALAR_JSON_TYPE) return { type: JTS_SCALAR_JSON_TYPE[m] };
+    if (m === 'array') {
+      const el = jtsJsonSchemaType(ts.array.element, names);
+      return Object.keys(el).length === 0
+        ? { type: 'array' }
+        : { type: 'array', items: el };
+    }
+    if (m === 'object') {
+      return jtsIsEmptyObject(ts)
+        ? { type: 'object' }
+        : { $ref: `#/$defs/${names.byShape.get(ts.object)}` };
+    }
+    throw new Error(`unknown member ${m}`);
+  });
+  if (nullable) branches.push({ type: 'null' });
+  return branches.length === 1 ? branches[0] : { anyOf: branches };
+}
+
+function jtsObjectSchema(ts, shape, names) {
+  const properties = {};
+  const required = [];
+  for (const f of jtsSortedFields(shape)) {
+    properties[f.key] = jtsJsonSchemaType(f.type, names);
+    if (!jtsIsOptional(shape, f)) required.push(f.key);
+  }
+  const schema = { type: 'object', properties };
+  if (required.length > 0) schema.required = required;
+  schema.additionalProperties = true;
+  return schema;
+}
+
+function jtsBuildJsonSchema(rootTs, names, opts = {}) {
+  const rootName = opts.rootName ?? 'Root';
+  const defs = {};
+  for (const { name, ts, shape } of names.order) {
+    if (name === rootName && ts === rootTs) continue;
+    defs[name] = jtsObjectSchema(ts, shape, names);
+  }
+  const root =
+    names.order.length > 0 && names.order[0].ts === rootTs
+      ? jtsObjectSchema(rootTs, rootTs.object, names)
+      : { type: 'object', additionalProperties: true };
+  const out = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    title: rootName,
+    ...root,
+  };
+  if (Object.keys(defs).length > 0) {
+    // Sorted so the file is byte-stable regardless of traversal details.
+    out.$defs = {};
+    for (const k of Object.keys(defs).sort()) out.$defs[k] = defs[k];
+  }
+  return out;
+}
+
+function jtsEmitJsonSchema(rootTs, names, opts = {}) {
+  return `${JSON.stringify(jtsBuildJsonSchema(rootTs, names, opts), null, 2)}\n`;
+}
+
+// ---- src/emit_sql.js -------------------------------------------------
+// Postgres DDL emitter.
+//
+// Every mapping decision here is deliberate and is listed in the README. Summary:
+//
+//   string                -> text            (not varchar(n): the samples cannot tell you
+//                                             a real maximum, and text is not slower)
+//   integer, int32 range  -> integer
+//   integer, int64 range  -> bigint
+//   integer, wider        -> numeric
+//   non-integer number    -> double precision (JSON numbers are IEEE 754 doubles once parsed)
+//   boolean               -> boolean
+//   object                -> jsonb           (no child table is invented)
+//   array                 -> jsonb           (not text[]: arrays can be heterogeneous)
+//   union of scalars      -> jsonb           (not text: text would lose the difference
+//                                             between the number 1 and the string "1")
+//   only null observed    -> text            (nothing to go on; column stays nullable)
+//
+// Nullability: a column is NOT NULL only when the field is required AND null was never
+// observed. Optional and nullable both become "this column may be NULL", because a row
+// has no way to express an absent column. That collapse is real and is the one place
+// where the SQL output carries less information than the other three.
+//
+// Every jsonb column carries a CHECK on jsonb_typeof so the container kind is enforced
+// rather than merely documented.
+
+
+const JTS_PG_MAX_COLUMNS = 1600;
+
+const JTS_INT32_MIN = -2147483648;
+const JTS_INT32_MAX = 2147483647;
+
+const JTS_JSONB_TYPEOF = {
+  boolean: 'boolean',
+  integer: 'number',
+  number: 'number',
+  string: 'string',
+  array: 'array',
+  object: 'object',
+};
+
+// Returns { type, checkKinds|null, note|null }
+function jtsPgColumnType(ts) {
+  const members = jtsMembers(ts);
+  if (members.length === 0) {
+    return { type: 'text', checkKinds: null, note: 'only null was observed for this field' };
+  }
+  if (members.length === 1) {
+    const m = members[0];
+    if (m === 'boolean') return { type: 'boolean', checkKinds: null, note: null };
+    if (m === 'string') return { type: 'text', checkKinds: null, note: null };
+    if (m === 'number') return { type: 'double precision', checkKinds: null, note: null };
+    if (m === 'integer') {
+      const min = ts.intMin ?? 0;
+      const max = ts.intMax ?? 0;
+      if (min >= JTS_INT32_MIN && max <= JTS_INT32_MAX) {
+        return { type: 'integer', checkKinds: null, note: null };
+      }
+      if (min >= Number.MIN_SAFE_INTEGER && max <= Number.MAX_SAFE_INTEGER) {
+        return { type: 'bigint', checkKinds: null, note: 'values exceed the int32 range' };
+      }
+      return { type: 'numeric', checkKinds: null, note: 'values exceed the int64 safe range' };
+    }
+    if (m === 'array') {
+      return { type: 'jsonb', checkKinds: ['array'], note: null };
+    }
+    if (m === 'object') {
+      return {
+        type: 'jsonb',
+        checkKinds: ['object'],
+        note: jtsIsEmptyObject(ts) ? 'no fields were ever present on this object' : null,
+      };
+    }
+  }
+  const kinds = [...new Set(members.map((m) => JTS_JSONB_TYPEOF[m]))].sort();
+  return {
+    type: 'jsonb',
+    checkKinds: kinds,
+    note: `mixed types across samples (${members.join(' | ')}); jsonb keeps them apart, text would not`,
+  };
+}
+
+function jtsPgLiteral(s) {
+  return `'${String(s).replace(/'/g, "''")}'`;
+}
+
+// The statement that loads one JSON document into the generated table.
+//
+// Without renamed columns this is a plain jsonb_populate_record. When a column HAD to be
+// renamed (the empty-string key, or a key over 63 bytes), populate_record would look for
+// the column name and never find the original key, so the load statement rewrites those
+// keys first. Getting this wrong is silent: every renamed column arrives NULL.
+function jtsPgLoadStatement(rootTs, rootName) {
+  const table = jtsPgTableName(rootName);
+  const q = jtsQuotePgIdent(table);
+  const shape = rootTs.object;
+  const renames = shape
+    ? jtsPgColumnNames(jtsSortedFields(shape).map((f) => f.key)).filter((m) => m.renamed)
+    : [];
+  if (renames.length === 0) {
+    return `INSERT INTO ${q}\nSELECT * FROM jsonb_populate_record(null::${q}, $1::jsonb);`;
+  }
+  const dropped = renames.map((r) => jtsPgLiteral(r.key)).join(', ');
+  const adds = renames
+    .map(
+      (r) =>
+        `    (CASE WHEN $1::jsonb ? ${jtsPgLiteral(r.key)}` +
+        ` THEN jsonb_build_object(${jtsPgLiteral(r.column)}, $1::jsonb -> ${jtsPgLiteral(r.key)})` +
+        ` ELSE '{}'::jsonb END)`
+    )
+    .join(' ||\n');
+  return (
+    `INSERT INTO ${q}\nSELECT * FROM jsonb_populate_record(null::${q},\n` +
+    `  ($1::jsonb - ARRAY[${dropped}]) ||\n${adds}\n);`
+  );
+}
+
+function jtsEmitPostgres(rootTs, names, opts = {}) {
+  const rootName = opts.rootName ?? 'Root';
+  const table = jtsPgTableName(rootName);
+  const lines = [];
+  lines.push('-- Generated by json-typestack. Do not edit by hand.');
+  lines.push(`-- Inferred from ${opts.sampleCount ?? '?'} sample(s).`);
+  lines.push('-- Load one document per row with:');
+  for (const l of jtsPgLoadStatement(rootTs, rootName).split('\n')) lines.push(`--   ${l}`);
+  lines.push('-- No primary key is inferred: samples cannot show which field is unique.');
+
+  const shape = rootTs.object;
+  if (!shape || shape.fields.size === 0) {
+    lines.push('');
+    lines.push(`CREATE TABLE ${jtsQuotePgIdent(table)} (`);
+    lines.push('  "document" jsonb NOT NULL');
+    lines.push(');');
+    lines.push('-- The root object had no fields in any sample, so there is nothing to');
+    lines.push('-- spread into columns. The whole document is stored as jsonb.');
+    lines.push('');
+    return lines.join('\n');
+  }
+
+  const fields = jtsSortedFields(shape);
+  const mapped = jtsPgColumnNames(fields.map((f) => f.key));
+
+  if (fields.length > JTS_PG_MAX_COLUMNS) {
+    lines.push(
+      `-- WARNING: ${fields.length} columns. Postgres allows at most ${JTS_PG_MAX_COLUMNS};`
+    );
+    lines.push('-- this table will be rejected. Store the document as a single jsonb column');
+    lines.push('-- or split it across several tables.');
+  }
+
+  lines.push('');
+  lines.push(`CREATE TABLE ${jtsQuotePgIdent(table)} (`);
+
+  const body = [];
+  const checks = [];
+  fields.forEach((f, i) => {
+    const { column, renamed, reason } = mapped[i];
+    const { type, checkKinds, note } = jtsPgColumnType(f.type);
+    const optional = jtsIsOptional(shape, f);
+    const nullable = jtsIsNullable(f.type);
+    const notNull = !optional && !nullable ? ' NOT NULL' : '';
+    const comments = [];
+    if (renamed) comments.push(`from JSON key ${JSON.stringify(f.key)}: ${reason}`);
+    if (note) comments.push(note);
+    // When null was the ONLY thing observed, the note above already says so; repeating
+    // "and it was null sometimes" adds nothing.
+    const onlyNull = jtsMembers(f.type).length === 0;
+    if (optional && nullable && !onlyNull) comments.push('optional AND nullable in the source samples');
+    else if (optional) comments.push('optional: absent from at least one sample');
+    else if (nullable && !onlyNull) comments.push('always present, but null in at least one sample');
+    body.push(
+      `  ${jtsQuotePgIdent(column)} ${type}${notNull}${comments.length ? `, -- ${comments.join('; ')}` : ','}`
+    );
+    if (checkKinds) {
+      const allowed = [...checkKinds];
+      // A JSON null inside a jsonb column is the string 'null' to jsonb_typeof, and it is
+      // distinct from SQL NULL. Allow it when the field was ever null.
+      if (nullable) allowed.push('null');
+      const list = allowed.map((k) => `'${k}'`).join(', ');
+      const q = jtsQuotePgIdent(column);
+      const expr =
+        allowed.length === 1
+          ? `jsonb_typeof(${q}) = ${list}`
+          : `jsonb_typeof(${q}) IN (${list})`;
+      checks.push(
+        `  CONSTRAINT ${jtsQuotePgIdent(`${table}_${column}_kind`.slice(0, 63))} CHECK (${q} IS NULL OR ${expr}),`
+      );
+    }
+  });
+
+  const all = [...body, ...checks];
+  // Strip the trailing comma from the last entry, keeping any trailing comment.
+  const last = all.length - 1;
+  all[last] = all[last].replace(/,(\s*--.*)?$/, '$1');
+  lines.push(...all);
+  lines.push(');');
+  lines.push('');
+  return lines.join('\n');
+}
+
+// ---- src/emit_fixtures.js --------------------------------------------
+// Example fixture generator.
+//
+// Three fixtures come out of every run, and all three must validate against the schemas
+// generated from the same samples:
+//
+//   minimal  only the required keys, non-null values
+//   full     every key, non-null values wherever a non-null type was observed
+//   nulls    every key, null wherever null is allowed
+//
+// A generator that emits fixtures its own schema rejects is a common bug, so verify
+// checks all three against Zod, JSON Schema and the Postgres DDL.
+
+
+function jtsExampleFor(ts, mode) {
+  if (jtsIsUnknown(ts)) return null;
+  const members = jtsMembers(ts);
+  const nullable = jtsIsNullable(ts);
+  if (members.length === 0) return null; // only null was ever observed
+  if (mode === 'nulls' && nullable) return null;
+
+  switch (members[0]) {
+    case 'boolean':
+      return true;
+    case 'integer':
+      return 1;
+    case 'number':
+      return 1.5;
+    case 'string':
+      return 'example';
+    case 'array': {
+      const el = ts.array.element;
+      if (jtsIsUnknown(el)) return [];
+      return [jtsExampleFor(el, mode)];
+    }
+    case 'object':
+      return jtsIsEmptyObject(ts) ? {} : jtsObjectExample(ts.object, mode);
+    default:
+      throw new Error(`unknown member ${members[0]}`);
+  }
+}
+
+function jtsObjectExample(shape, mode) {
+  const out = {};
+  for (const f of jtsSortedFields(shape)) {
+    if (mode === 'minimal' && jtsIsOptional(shape, f)) continue;
+    out[f.key] = jtsExampleFor(f.type, mode);
+  }
+  return out;
+}
+
+function jtsBuildFixtures(rootTs) {
+  const shape = rootTs.object ?? { count: 1, fields: new Map() };
+  return {
+    minimal: jtsObjectExample(shape, 'minimal'),
+    full: jtsObjectExample(shape, 'full'),
+    nulls: jtsObjectExample(shape, 'nulls'),
+  };
+}
+
+function jtsEmitFixtures(rootTs) {
+  return `${JSON.stringify(jtsBuildFixtures(rootTs), null, 2)}\n`;
+}
+
+// ---- src/index.js ----------------------------------------------------
+// Public entry point. One call takes samples in and returns all five outputs.
+//
+// The same function backs the CLI and the browser page in docs/index.html, which is why
+// nothing in src/ imports anything from node: the page inlines these modules verbatim.
+
+
+const JTS_TARGETS = ['ts', 'zod', 'jsonschema', 'sql', 'fixtures'];
+
+function jtsGenerate(samples, options = {}) {
+  const rootName = jtsRootTypeName(options.name ?? 'Root');
+  const rootTs = jtsInfer(samples);
+  const names = jtsBuildNames(rootTs, rootName);
+  const opts = { rootName, sampleCount: samples.length };
+  return {
+    rootName,
+    tableName: jtsPgTableName(rootName),
+    sampleCount: samples.length,
+    ts: jtsEmitTypeScript(rootTs, names, opts),
+    zod: jtsEmitZod(rootTs, names, opts),
+    jsonschema: jtsEmitJsonSchema(rootTs, names, opts),
+    sql: jtsEmitPostgres(rootTs, names, opts),
+    pgLoadStatement: jtsPgLoadStatement(rootTs, rootName),
+    fixtures: jtsEmitFixtures(rootTs),
+    jsonschemaObject: jtsBuildJsonSchema(rootTs, names, opts),
+    fixturesObject: jtsBuildFixtures(rootTs),
+    model: rootTs,
+    names,
+  };
+}
+
+// Parses one file's worth of text into a list of samples. Accepts a single JSON object,
+// a JSON array of objects, or newline-delimited JSON.
+function jtsParseSamples(text, label = 'input') {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error(`${label}: empty input`);
+  try {
+    const v = JSON.parse(trimmed);
+    return Array.isArray(v) ? v : [v];
+  } catch (jsonErr) {
+    const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) throw new Error(`${label}: ${jsonErr.message}`);
+    const out = [];
+    lines.forEach((line, i) => {
+      try {
+        out.push(JSON.parse(line));
+      } catch (e) {
+        throw new Error(`${label}: not valid JSON, and line ${i + 1} is not valid NDJSON either (${e.message})`);
+      }
+    });
+    return out;
+  }
+}
+/* JTS-CORE-END */
+</script>
+<script>
+(function () {
+  'use strict';
+
+  var EXAMPLES = {
+    user: [
+      { id: 1, email: 'ada@example.com', nickname: null, tags: ['admin'] },
+      { id: 'two', nickname: 'bee', tags: [] },
+      { id: 3, email: 'cy@example.com', nickname: null, tags: ['ops', 'oncall'] }
+    ],
+    widen: [
+      { id: 1, score: 10, at: '2026-01-01' },
+      { id: 'x', score: 10.5, at: null },
+      { id: 2, score: 3, at: '2026-02-02' }
+    ],
+    awkward: [
+      { '2fa': true, 'my-field': 'x', 'class': 1, '': 'empty key', 'SELECT': 'v' },
+      { '2fa': false, 'my-field': 'y', 'class': 2, '': 'still here', 'SELECT': 'w' }
+    ],
+    nested: [
+      {
+        ref: 'A1',
+        lines: [{ sku: 'x', qty: 1 }, { sku: 'y', qty: 2, note: 'gift' }],
+        meta: { source: { channel: 'web' } }
+      },
+      {
+        ref: 'A2',
+        lines: [{ sku: 'z', qty: 3 }],
+        meta: { source: { channel: 'app', agent: 'ios' } }
+      }
+    ]
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var input = $('input');
+  var nameEl = $('name');
+  var statusEl = $('status');
+  var factsEl = $('facts');
+  var TARGETS = ['ts', 'zod', 'jsonschema', 'sql', 'fixtures'];
+
+  // The browser check in scripts/browser-check.mjs calls this and compares the result,
+  // byte for byte, with what the CLI produced for the same input.
+  window.__jtsGenerate = function (text, name) {
+    var samples = jtsParseSamples(text, 'input');
+    var g = jtsGenerate(samples, { name: name });
+    return { ts: g.ts, zod: g.zod, jsonschema: g.jsonschema, sql: g.sql, fixtures: g.fixtures };
+  };
+
+  function countFields(shape) {
+    var optional = 0;
+    var nullable = 0;
+    var total = 0;
+    shape.fields.forEach(function (field) {
+      total += 1;
+      if (field.present < shape.count) optional += 1;
+      if (field.type.scalars.null > 0) nullable += 1;
+    });
+    return { total: total, optional: optional, nullable: nullable };
+  }
+
+  function render() {
+    var text = input.value;
+    var name = nameEl.value || 'Root';
+    var samples;
+    try {
+      samples = jtsParseSamples(text, 'input');
+    } catch (e) {
+      fail(e.message);
+      return;
+    }
+    var g;
+    try {
+      g = jtsGenerate(samples, { name: name });
+    } catch (e) {
+      fail(e.message);
+      return;
+    }
+    statusEl.className = 'status';
+    var counted = g.model.object ? countFields(g.model.object) : { total: 0, optional: 0, nullable: 0 };
+    statusEl.textContent =
+      samples.length === 1
+        ? 'One sample, so every field reads as required. Add another to infer optionality.'
+        : samples.length + ' samples compared.';
+    factsEl.innerHTML = '';
+    [
+      ['samples', samples.length],
+      ['top-level fields', counted.total],
+      ['optional', counted.optional],
+      ['nullable', counted.nullable],
+      ['named types', g.names.order.length]
+    ].forEach(function (pair) {
+      var li = document.createElement('li');
+      var b = document.createElement('b');
+      b.textContent = String(pair[1]);
+      li.appendChild(b);
+      li.appendChild(document.createTextNode(' ' + pair[0]));
+      factsEl.appendChild(li);
+    });
+    TARGETS.forEach(function (t) { $('out-' + t).textContent = g[t]; });
+  }
+
+  function fail(message) {
+    statusEl.className = 'status bad';
+    statusEl.textContent = message;
+    factsEl.innerHTML = '';
+    TARGETS.forEach(function (t) { $('out-' + t).textContent = ''; });
+  }
+
+  var timer = null;
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(render, 120);
+  }
+  input.addEventListener('input', schedule);
+  nameEl.addEventListener('input', schedule);
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-example]'), function (b) {
+    b.addEventListener('click', function () {
+      input.value = JSON.stringify(EXAMPLES[b.getAttribute('data-example')], null, 2);
+      render();
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (tab) {
+    tab.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+        t.setAttribute('aria-selected', String(t === tab));
+      });
+      TARGETS.forEach(function (t) {
+        $('panel-' + t).setAttribute('data-active', String(t === tab.getAttribute('data-target')));
+      });
+    });
+  });
+
+  var themeBtn = $('theme');
+  themeBtn.addEventListener('click', function () {
+    var root = document.documentElement;
+    var current = root.getAttribute('data-theme');
+    var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var next = current ? (current === 'dark' ? 'light' : 'dark') : (systemDark ? 'light' : 'dark');
+    root.setAttribute('data-theme', next);
+    themeBtn.setAttribute('aria-pressed', String(next === 'dark'));
+    themeBtn.textContent = next === 'dark' ? 'Dark' : 'Light';
+  });
+
+  input.value = JSON.stringify(EXAMPLES.user, null, 2);
+  render();
+})();
+</script>
+</body>
+</html>
