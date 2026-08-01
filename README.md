@@ -318,8 +318,8 @@ check, the browser check, and the README count check.
 **2. The Zod emitter drops all constraints** (`jtsZodType` returns `z.any()` and every key
 gets `.optional()`). The generated schema changed from `id: z.number().int()` to
 `id: z.any().optional()`, and the loaded schema then accepted `{}` and
-`{"id": {"deeply": ["wrong"]}}`. Verify exited **1**, with "wrong documents where Zod
-matched the declared expectation" dropping from 25/25 to 1/25.
+`{"id": {"deeply": ["wrong"]}}`. Verify exited **1** with four failing sections, and
+"wrong documents where Zod matched the declared expectation" dropped from 31/31 to 1/31.
 
 ## Status
 
@@ -369,14 +369,14 @@ json-typestack verify, in ~/Projects/thousand/projects/json-typestack
   ok    empty root object (1187 bytes of output)
   ok    null everywhere (1206 bytes of output)
   ok    150 levels of nesting produced 151 interfaces
-  ok    a 5000-key object generated in 87ms and warned about the 1600-column limit
+  ok    a 5000-key object generated in 84ms and warned about the 1600-column limit
 
 6. the page is built from src/ and is not stale
   ok    docs/index.html matches the current src/ (48790 bytes)
 
 7. the page in a real browser
     playwright-core from ~/Projects/thousand/projects/a11y-sweep/node_modules/playwright-core
-    ok    port 40997 is serving this project's page (48790 bytes)
+    ok    port 36347 is serving this project's page (48790 bytes)
     ok    page identity is "json-typestack"
     ok    the inline script ran and exposed the generator
     ok    the default example rendered 196 characters of TypeScript
@@ -402,7 +402,7 @@ json-typestack verify, in ~/Projects/thousand/projects/json-typestack
   ok    22 passed browser assertions
 
 8. hygiene of committed files
-    29 tracked files scanned, 218704 bytes, 0 with NUL bytes
+    29 tracked files scanned, 218729 bytes, 0 with NUL bytes
     7 detectors self-tested against synthetic samples
     NUL detection confirmed on a synthetic sample
     the AWS pattern stays case-sensitive, so base64 does not false-positive
