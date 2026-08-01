@@ -212,7 +212,7 @@ README="README.md"
 if [ ! -f "$README" ]; then
   bad "README.md is missing"
 else
-  ok "README.md exists ($(wc -l <"$README") lines)"
+  ok "README.md exists"
   if grep -q '^## Status' "$README"; then ok "README has a Status section"; else bad "README has no ## Status section"; fi
   if grep -q '^## Limitations' "$README"; then ok "README has a Limitations section"; else bad "README has no ## Limitations section"; fi
   if grep -q 'VERIFY OK' "$README"; then
@@ -226,7 +226,13 @@ else
   else
     bad "README does not say '$UNIT_COUNT unit tests'; the count in it is stale"
   fi
-  if grep -q 'TODO' "$README"; then bad "README still contains a TODO"; else ok "README has no TODO left in it"; fi
+  # The marker words are matched with a trailing colon and the messages avoid them, so
+  # this section's own output cannot appear in the README and trip the check.
+  if grep -qE 'TODO:|FIXME:|PLACEHOLDER' "$README"; then
+    bad "README still carries an unfinished marker"
+  else
+    ok "README carries no unfinished markers"
+  fi
 fi
 
 # ---------------------------------------------------------------------------------------
