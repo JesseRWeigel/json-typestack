@@ -8,7 +8,7 @@ import { jtsRootTypeName, jtsBuildNames, jtsPgTableName } from './naming.js';
 import { jtsEmitTypeScript } from './emit_ts.js';
 import { jtsEmitZod } from './emit_zod.js';
 import { jtsEmitJsonSchema, jtsBuildJsonSchema } from './emit_jsonschema.js';
-import { jtsEmitPostgres } from './emit_sql.js';
+import { jtsEmitPostgres, jtsPgLoadStatement } from './emit_sql.js';
 import { jtsEmitFixtures, jtsBuildFixtures } from './emit_fixtures.js';
 
 export const JTS_TARGETS = ['ts', 'zod', 'jsonschema', 'sql', 'fixtures'];
@@ -26,6 +26,7 @@ export function jtsGenerate(samples, options = {}) {
     zod: jtsEmitZod(rootTs, names, opts),
     jsonschema: jtsEmitJsonSchema(rootTs, names, opts),
     sql: jtsEmitPostgres(rootTs, names, opts),
+    pgLoadStatement: jtsPgLoadStatement(rootTs, rootName),
     fixtures: jtsEmitFixtures(rootTs),
     jsonschemaObject: jtsBuildJsonSchema(rootTs, names, opts),
     fixturesObject: jtsBuildFixtures(rootTs),
