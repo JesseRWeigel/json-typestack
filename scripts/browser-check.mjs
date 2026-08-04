@@ -33,7 +33,7 @@ const candidates = [
   process.env.PLAYWRIGHT_CORE,
   join(root, 'node_modules', 'playwright-core'),
   'playwright-core',
-  join(homedir(), 'Projects', 'thousand', 'projects', 'a11y-sweep', 'node_modules', 'playwright-core'),
+  join(root, '..', 'a11y-sweep', 'node_modules', 'playwright-core'),
 ].filter(Boolean);
 
 let chromium = null;

@@ -328,7 +328,7 @@ gets `.optional()`). The generated schema changed from `id: z.number().int()` to
 Real output of `bash scripts/verify.sh`, run from a clean shell:
 
 ```
-json-typestack verify, in ~/Projects/thousand/projects/json-typestack
+json-typestack verify, in <repo>/json-typestack
 
 0. dependencies
   ok    zod present (4.4.3)
@@ -377,7 +377,7 @@ json-typestack verify, in ~/Projects/thousand/projects/json-typestack
   ok    docs/index.html matches the current src/ (48790 bytes)
 
 7. the page in a real browser
-    playwright-core from ~/Projects/thousand/projects/a11y-sweep/node_modules/playwright-core
+    playwright-core from <repo>/a11y-sweep/node_modules/playwright-core
     ok    port 36347 is serving this project's page (48790 bytes)
     ok    page identity is "json-typestack"
     ok    the inline script ran and exposed the generator
